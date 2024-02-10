@@ -13,6 +13,7 @@
 
   const imageUrl = ref("");
   const convertedImageUrl = ref("");
+  const isLoading = ref(false);
 
   const size = ref("");
   const quality = ref(90);
@@ -41,6 +42,7 @@
   function onSizeChange(newWidth, newHeight) {
     if (preserveAspectRatio.value) {
       const aspectRatio = initialWidth.value / initialHeight.value;
+
       if (width.value !== newWidth && aspectRatio) {          // width changed
         height.value = Math.round(newWidth / aspectRatio);
       } else if (height.value !== newHeight && aspectRatio) { // height changed
@@ -77,14 +79,19 @@
   }
 
   async function preview() {
+    isLoading.value = true;
     console.log("Previewing image with size: " + width.value + "x" + height.value + " and quality: " + quality.value);
+
     const res = await processImage((params) => invoke("preview", params));
     convertedImageUrl.value = res[0];
     size.value = res[1];
+
     console.log("Previewed image size: " + size.value);
+    isLoading.value = false;
   }
 
   async function convert() {
+    isLoading.value = true;
     const pictureDirPath = await pictureDir();
     const savePath = await dialog.save({
       defaultPath: pictureDirPath + "/converted.jpg",
@@ -94,7 +101,9 @@
     if (!savePath) return;
 
     const res = await processImage((params) => invoke("convert", { ...params, savePath: savePath }));
+
     console.log("Saved converted image to: " + savePath + " with size: " + res);
+    isLoading.value = false;
   }
 </script>
 
@@ -109,6 +118,11 @@
             aspect-ratio="1"
             contain
           >
+            <template #placeholder>
+              <v-row class="fill-height ma-0" align="center" justify="center">
+                <span>Waiting for the user to upload an image...</span>
+              </v-row>
+            </template>
           </v-img>
         </div>
         <v-file-input
@@ -176,12 +190,16 @@
             aspect-ratio="1"
             contain
           >
-            <template v-slot:placeholder>
-              <div class="d-flex align-center justify-center fill-height">
-                <v-progress-circular
-                  color="grey-lighten-4"
-                />
-              </div>
+            <!-- TODO use threads to prevent UI from freezing? -->
+            <template v-if="isLoading" #placeholder>
+              <v-row class="fill-height ma-0" align="center" justify="center">
+                <v-progress-circular indeterminate></v-progress-circular>
+              </v-row>
+            </template>
+            <template v-else #placeholder>
+              <v-row class="fill-height ma-0" align="center" justify="center">
+                <span>No preview requested yet</span>
+              </v-row>
             </template>
           </v-img>
         </div>
