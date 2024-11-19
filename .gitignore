@@ -18,6 +18,7 @@ target
 !.vscode/extensions.json
 .idea
 .DS_Store
+.prettierrc
 *.suo
 *.ntvs*
 *.njsproj

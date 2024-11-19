@@ -1,8 +1,8 @@
 <script setup>
   import { ref } from "vue";
-  import { invoke } from "@tauri-apps/api/tauri";
-  import { dialog } from "@tauri-apps/api";
+  import { invoke } from "@tauri-apps/api/core";
   import { pictureDir } from "@tauri-apps/api/path";
+  import { save } from "@tauri-apps/plugin-dialog"
 
   const image = ref(null);
   const initialWidth = ref(0);
@@ -93,7 +93,7 @@
   async function convert() {
     isLoading.value = true;
     const pictureDirPath = await pictureDir();
-    const savePath = await dialog.save({
+    const savePath = await save({
       defaultPath: pictureDirPath + "/converted.jpg",
       filters: [{ name: 'Images', extensions: ["jpg"]}]
     });
