@@ -25,9 +25,11 @@
 
     image.value = file;
     const reader = new FileReader();
+
     reader.onload = (e) => {
       imageUrl.value = e.target.result;
       const img = new Image();
+
       img.onload = () => {
         initialWidth.value = img.width;
         initialHeight.value = img.height;
@@ -36,16 +38,17 @@
       };
       img.src = e.target.result;
     };
+
     reader.readAsDataURL(file);
   };
 
   function onSizeChange(newWidth, newHeight) {
-    if (preserveAspectRatio.value) {
+    if (preserveAspectRatio.value && initialWidth.value && initialHeight.value) {
       const aspectRatio = initialWidth.value / initialHeight.value;
-
-      if (width.value !== newWidth && aspectRatio) {          // width changed
+      
+      if (width.value !== newWidth) {
         height.value = Math.round(newWidth / aspectRatio);
-      } else if (height.value !== newHeight && aspectRatio) { // height changed
+      } else if (height.value !== newHeight) {
         width.value = Math.round(newHeight * aspectRatio);
       }
     } else {
@@ -54,56 +57,59 @@
     }
   };
 
-  async function processImage(processFunction) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const arrayBuffer = e.target.result;
-        const image_blob = Array.from(new Uint8Array(arrayBuffer));
-        const params = { 
-          imageBlob: image_blob, 
-          width: Number(width.value), 
-          height: Number(height.value), 
-          quality: Number(quality.value) 
-        };
-        try {
-          const res = await processFunction(params);
-          resolve(res);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(image.value);
-    });
+  async function processImage(action, additionalParams = {}) {
+    if (!image.value) {
+      throw new Error("No image selected.");
+    }
+
+    const arrayBuffer = await image.value.arrayBuffer();
+    const imageBlob = new Uint8Array(arrayBuffer);
+
+    const params = {
+      imageBlob: imageBlob,
+      width: Number(width.value),
+      height: Number(height.value),
+      quality: Number(quality.value),
+      ...additionalParams,
+    };
+
+    return await invoke(action, params);
   }
 
   async function preview() {
     isLoading.value = true;
-    console.log("Previewing image with size: " + width.value + "x" + height.value + " and quality: " + quality.value);
 
-    const res = await processImage((params) => invoke("preview", params));
-    convertedImageUrl.value = res[0];
-    size.value = res[1];
-
-    console.log("Previewed image size: " + size.value);
-    isLoading.value = false;
+    try {
+      const res = await processImage('preview');
+      convertedImageUrl.value = res[0];
+      size.value = res[1];
+    } catch (error) {
+      console.error("Failed to preview image:", error);
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   async function convert() {
     isLoading.value = true;
     const pictureDirPath = await pictureDir();
     const savePath = await save({
-      defaultPath: pictureDirPath + "/converted.jpg",
+      defaultPath: `${pictureDirPath}/converted.jpg`,
       filters: [{ name: 'Images', extensions: ["jpg"]}]
     });
 
-    if (!savePath) return;
+    if (!savePath) {
+      isLoading.value = false;
+      return;
+    }
 
-    const res = await processImage((params) => invoke("convert", { ...params, savePath: savePath }));
-
-    console.log("Saved converted image to: " + savePath + " with size: " + res);
-    isLoading.value = false;
+    try {
+      const res = await processImage('convert', { savePath: savePath });
+    } catch (error) {
+      console.error("Failed to convert image:", error);
+    } finally {
+      isLoading.value = false;
+    }
   }
 </script>
 
@@ -111,7 +117,7 @@
   <v-container>
     <v-row>
       <v-col class="side-column">
-        <div style="max-width: 100vw; max-height: 100vh; overflow: hidden;">
+        <div class="img-container">
           <v-img
             min-height="200"
             :src="imageUrl"
@@ -141,7 +147,6 @@
               class="resize-btn"
               v-model="width"
               label="Width"
-              :value="width"
               :min=1
               type="number"
               variant="outlined"
@@ -152,7 +157,6 @@
               class="resize-btn"
               v-model="height"
               label="Height"
-              :value="height"
               :min=1
               type="number"
               variant="outlined"
@@ -169,7 +173,6 @@
           <v-text-field
             v-model="quality"
             label="Quality"
-            :value="quality"
             type="number"
             hide-details
             variant="outlined"
@@ -177,12 +180,12 @@
           ></v-text-field>
         </v-row>
         <v-row class="d-flex justify-space-around">
-          <v-btn class="preview-btn" @click="preview"> Preview </v-btn>
-          <v-btn class="convert-btn" @click="convert"> Convert </v-btn>
+          <v-btn class="preview-btn" @click="preview" :disabled="isLoading"> Preview </v-btn>
+          <v-btn class="convert-btn" @click="convert" :disabled="isLoading"> Convert </v-btn>
         </v-row>
       </v-col>
       <v-col class="side-column">
-        <div style="max-width: 100vw; max-height: 100vh; overflow: hidden">
+        <div class="img-container">
           <v-img
             min-height="200"
             lazy-src=""
@@ -190,7 +193,6 @@
             aspect-ratio="1"
             contain
           >
-            <!-- TODO use threads to prevent UI from freezing? -->
             <template v-if="isLoading" #placeholder>
               <v-row class="fill-height ma-0" align="center" justify="center">
                 <v-progress-circular indeterminate></v-progress-circular>
@@ -206,7 +208,6 @@
         <v-text-field
           v-model="size"
           label="Size"
-          :value="size"
           type="text"
           readonly
           variant="outlined"
@@ -232,6 +233,12 @@
     display: flex;
     flex-direction: column;
     row-gap: 2rem;
+  }
+  .img-container {
+    max-width: 100vw;
+    max-height: 100vh;
+    border: 1px solid #000000;
+    overflow: hidden;
   }
   .buttons-column {
     display: flex;
